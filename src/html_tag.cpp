@@ -6,6 +6,7 @@
 #include "table.h"
 #include <algorithm>
 #include <locale>
+#include <cmath>
 #include "el_before_after.h"
 
 litehtml::html_tag::html_tag(const std::shared_ptr<litehtml::document>& doc) : litehtml::element(doc)
@@ -2948,7 +2949,18 @@ void litehtml::html_tag::draw_list_marker( uint_ptr hdc, const position &pos )
 	lm.pos.x		= pos.x;
 	lm.pos.width	= sz_font	- sz_font * 2 / 3;
 	lm.pos.height	= sz_font	- sz_font * 2 / 3;
-	lm.pos.y		= pos.y		+ ln_height / 2 - lm.pos.height / 2;
+	if (m_list_style_type == list_style_type_decimal)
+	{
+		font_metrics fm;
+		get_font(&fm);
+
+		lm.pos.y = pos.y + line_height() - fm.base_line() - fm.ascent;
+		lm.pos.height = line_height();
+	}
+	else
+	{
+	    lm.pos.y = pos.y + ln_height / 2 - lm.pos.height / 2;
+	}
 
 	if(img_size.width && img_size.height)
 	{
@@ -2964,13 +2976,52 @@ void litehtml::html_tag::draw_list_marker( uint_ptr hdc, const position &pos )
 		lm.pos.width	= img_size.width;
 		lm.pos.height	= img_size.height;
 	}
+
+    int num_li = 0;  // total number of list items
+	if (m_list_style_type == list_style_type_decimal)
+	{
+		// compute the ordinal vor this list item
+		auto num = parent()->get_children_count();
+		lm.value = 1;
+		for (int i = 0; i < num; i++)
+		{
+			auto child = parent()->get_child(i);
+			auto tag_name = child->get_tagName();
+			if (tag_name != "" && child.get() != this)
+				lm.value++;
+			if (child.get() == this)
+				break;
+		}
+
+		for (int i = 0; i < num; i++)
+		{
+			auto child = parent()->get_child(i);
+			auto tag_name = child->get_tagName();
+			if (tag_name != "")
+				num_li++;
+		}
+	}
+
 	if(m_list_style_position == list_style_position_outside)
 	{
-		lm.pos.x -= sz_font;
+		if (m_list_style_type == list_style_type_decimal)
+		{
+			// if this is the marker of an ordered list,
+			// go to the left by XWidth*(ln10(max_pos)+2)
+			int x_width = get_document()->container()->text_width("X", m_font);
+			int ln10 = std::ceil(std::log10(num_li + 1));
+			lm.pos.x -= (2 + ln10) * x_width;
+		}
+		else
+		{
+			lm.pos.x -= sz_font;
+		}
 	}
 
 	lm.color = get_color(_t("color"), true, web_color(0, 0, 0));
 	lm.marker_type = m_list_style_type;
+	lm.font = m_font;
+
 	get_document()->container()->draw_list_marker(hdc, lm);
 }
 
